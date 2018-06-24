@@ -81,6 +81,8 @@ func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		DefaultDBProvider,
+		nil,
+		"",
 		logger,
 	)
 }
@@ -114,6 +116,8 @@ type Node struct {
 	rpcListeners     []net.Listener         // rpc servers
 	txIndexer        txindex.TxIndexer
 	indexerService   *txindex.IndexerService
+	extRPCRoute      string
+	extRPCHandler    http.Handler
 }
 
 // NewNode returns a new, ready to go, Tendermint Node.
@@ -122,6 +126,8 @@ func NewNode(config *cfg.Config,
 	clientCreator proxy.ClientCreator,
 	genesisDocProvider GenesisDocProvider,
 	dbProvider DBProvider,
+	extRPCHander http.Handler,
+	extRPCRoute string,
 	logger log.Logger) (*Node, error) {
 
 	// Get BlockStore
@@ -369,6 +375,8 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
+		extRPCRoute:      extRPCRoute,
+		extRPCHandler:    extRPCHander,
 	}
 	node.BaseService = *cmn.NewBaseService(logger, "Node", node)
 	return node, nil
@@ -507,6 +515,9 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 		wm.SetLogger(rpcLogger.With("protocol", "websocket"))
 		mux.HandleFunc("/websocket", wm.WebsocketHandler)
 		rpcserver.RegisterRPCFuncs(mux, rpccore.Routes, coreCodec, rpcLogger)
+		if n.extRPCHandler != nil {
+			mux.Handle(n.extRPCRoute, n.extRPCHandler)
+		}
 		listener, err := rpcserver.StartHTTPServer(listenAddr, mux, rpcLogger)
 		if err != nil {
 			return nil, err
